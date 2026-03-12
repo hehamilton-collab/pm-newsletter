@@ -34,19 +34,24 @@ def load_config() -> dict:
 
 
 def collect_slack(config: dict) -> dict | None:
-    """Collect Slack data."""
+    """Collect Slack data via API token or pre-collected MCP data."""
     token = os.getenv("SLACK_BOT_TOKEN")
-    if not token:
-        print("SLACK_BOT_TOKEN not set — skipping Slack collection")
-        return None
-    from collectors.slack_collector import SlackCollector
+    if token:
+        from collectors.slack_collector import SlackCollector
 
-    collector = SlackCollector(
-        token=token,
-        user_id=config["user"]["slack_user_id"],
-        lookback_days=config["slack"]["lookback_days"],
-    )
-    print("Collecting Slack data...")
+        collector = SlackCollector(
+            token=token,
+            user_id=config["user"]["slack_user_id"],
+            lookback_days=config["slack"]["lookback_days"],
+        )
+        print("Collecting Slack data via API...")
+        return collector.collect()
+
+    # Fall back to MCP-collected data file
+    from collectors.slack_mcp_collector import SlackMCPCollector
+
+    print("No SLACK_BOT_TOKEN — checking for MCP-collected data...")
+    collector = SlackMCPCollector()
     return collector.collect()
 
 
