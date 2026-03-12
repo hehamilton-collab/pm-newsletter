@@ -79,6 +79,12 @@ Edit `.env` and fill in credentials as you complete each section below.
 
 ### 3. Configure project settings
 
+Copy the example and edit with your details:
+
+```bash
+cp config.yaml.example config.yaml
+```
+
 Edit `config.yaml` to match your setup:
 
 ```yaml

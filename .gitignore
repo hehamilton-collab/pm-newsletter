@@ -1,4 +1,5 @@
 .env
+config.yaml
 *.json
 __pycache__/
 output/
