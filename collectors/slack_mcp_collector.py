@@ -10,6 +10,8 @@ Usage:
     2. generate.py will automatically read from that file
 """
 
+from __future__ import annotations
+
 import json
 import os
 from datetime import datetime, timedelta

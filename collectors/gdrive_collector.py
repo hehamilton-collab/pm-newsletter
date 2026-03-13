@@ -4,6 +4,8 @@ Uses the Google Apps Script Web App endpoint to fetch Drive activity.
 No Google Cloud project or OAuth setup needed — the Apps Script handles auth.
 """
 
+from __future__ import annotations
+
 import requests
 
 

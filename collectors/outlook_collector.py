@@ -1,5 +1,7 @@
 """Outlook Calendar data collector via Microsoft Graph API."""
 
+from __future__ import annotations
+
 import json
 import os
 from datetime import datetime, timedelta, timezone

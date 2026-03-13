@@ -1,5 +1,7 @@
 """Slack data collector for PM Newsletter."""
 
+from __future__ import annotations
+
 import time
 from datetime import datetime, timedelta
 from slack_sdk import WebClient

@@ -12,6 +12,8 @@ Usage:
     python generate.py --markdown-only  # Only save as local markdown
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -56,23 +58,31 @@ def collect_slack(config: dict) -> dict | None:
 
 
 def collect_jira(config: dict) -> dict | None:
-    """Collect Jira data."""
+    """Collect Jira data via API or pre-collected MCP data."""
     server = os.getenv("JIRA_SERVER")
     email = os.getenv("JIRA_EMAIL")
     api_token = os.getenv("JIRA_API_TOKEN")
-    if not all([server, email, api_token]):
-        print("Jira credentials not set — skipping Jira collection")
-        return None
-    from collectors.jira_collector import JiraCollector
+    if all([server, email, api_token]):
+        try:
+            from collectors.jira_collector import JiraCollector
 
-    collector = JiraCollector(
-        server=server,
-        email=email,
-        api_token=api_token,
-        project_key=config["jira"]["project_key"],
-        components=config["jira"]["components"],
-    )
-    print("Collecting Jira data...")
+            collector = JiraCollector(
+                server=server,
+                email=email,
+                api_token=api_token,
+                project_key=config["jira"]["project_key"],
+                components=config["jira"]["components"],
+            )
+            print("Collecting Jira data via API...")
+            return collector.collect()
+        except Exception as e:
+            print(f"Jira API failed ({e}) — falling back to MCP data...")
+
+    # Fall back to MCP-collected data file
+    from collectors.jira_mcp_collector import JiraMCPCollector
+
+    print("Checking for MCP-collected Jira data...")
+    collector = JiraMCPCollector()
     return collector.collect()
 
 

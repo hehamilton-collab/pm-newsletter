@@ -1,5 +1,7 @@
 """Jira data collector for PM Newsletter."""
 
+from __future__ import annotations
+
 from jira import JIRA
 
 

@@ -1,5 +1,7 @@
 """Newsletter formatter — generates Google Doc and local Markdown."""
 
+from __future__ import annotations
+
 import os
 from datetime import datetime, timedelta
 
