@@ -1,53 +1,68 @@
 # PM Weekly Newsletter Generator
 
-Automated weekly newsletter for PMs. Pulls data from Slack, Jira, and Google Drive then uses Claude to synthesize it into a formatted newsletter with executive summary, sprint status, blockers, key decisions, and action items.
+Automated weekly newsletter generator for Product Managers. Pulls data from Slack, Jira, and Google Drive, then synthesizes it into a formatted newsletter with executive summary, sprint status, blockers, key decisions, and action items.
+
+Output as **Slack Canvas**, **Google Doc**, or **local Markdown**.
 
 ## Newsletter Sections
 
-1. **Executive Summary** — 3-5 sentences: what shipped, key decisions, top risks, what needs attention
-2. **Blockers & Risks** — Table of stuck stories, P1/P2s, dependencies at risk with suggested actions
+1. **Executive Summary** — What shipped, key decisions, top risks, what needs attention
+2. **Blockers & Risks** — Table of stuck stories, high-priority issues, dependencies at risk with suggested actions
 3. **Key Decisions & Outcomes** — Decisions made in Slack with channel and date
-4. **Sprint Status** — Health numbers, grouped by epic/work stream, component summaries (Recoplex, Caramel, Config Hub)
-5. **Meetings & Context** — Past + upcoming meetings with attendees (requires Outlook setup)
-6. **Conversations & Threads** — Key Slack thread summaries
-7. **Pending — Needs Your Response** — Unanswered questions with suggested starting points
-8. **Document Activity** — Recently modified Google Drive files (requires Google Drive setup)
-9. **Action Items & Follow-Ups** — Prioritized checklist
+4. **Sprint Status** — Health numbers grouped by work stream and component
+5. **Conversations & Threads** — Key Slack thread summaries
+6. **Pending — Needs Your Response** — Unanswered questions with suggested starting points
+7. **Document Activity** — Recently modified Google Drive files (optional)
+8. **Action Items & Follow-Ups** — Prioritized checklist
 
 ## Architecture
 
 ```
 pm-newsletter/
-├── generate.py              # Main orchestrator — runs all collectors, synthesizes newsletter
-├── formatter.py             # Google Docs formatter + local markdown saver
-├── config.yaml              # Project configuration (user, Jira, Slack settings)
-├── .env                     # API credentials (not committed)
-├── .env.example             # Template for .env
-├── requirements.txt         # Python dependencies
-├── run.sh                   # Cron wrapper script
+├── generate.py                    # Main orchestrator — runs all collectors, synthesizes newsletter
+├── formatter.py                   # Google Docs formatter + local markdown saver
+├── config.yaml.example            # Project configuration template
+├── .env.example                   # API credentials template
+├── requirements.txt               # Python dependencies
+├── run.sh                         # Cron wrapper script
 ├── collectors/
-│   ├── slack_collector.py   # Slack Web API — messages, threads, decisions
-│   ├── jira_collector.py    # Jira REST API — sprint items, blockers, epics
-│   ├── gdrive_collector.py  # Google Apps Script Web App — Drive activity
-│   └── outlook_collector.py # Microsoft Graph API — calendar events
+│   ├── slack_collector.py         # Slack Web API — messages, threads, decisions
+│   ├── slack_mcp_collector.py     # MCP fallback — reads pre-collected Slack JSON
+│   ├── jira_collector.py          # Jira REST API — sprint items, blockers, epics
+│   ├── jira_mcp_collector.py      # MCP fallback — reads pre-collected Jira JSON
+│   ├── gdrive_collector.py        # Google Apps Script Web App — Drive activity
+│   └── outlook_collector.py       # Microsoft Graph API — calendar events (optional)
 ├── google-apps-script/
-│   └── Code.gs              # Google Apps Script (deploy as Web App)
+│   └── Code.gs                    # Google Apps Script for Drive integration
 └── output/
-    └── newsletter-YYYY-MM-DD.md  # Generated newsletters
+    └── newsletter-YYYY-MM-DD.md   # Generated newsletters
 ```
 
 ### How It Works
 
-1. **Collectors** pull data from each source (Slack, Jira, Google Drive, Outlook)
-2. **Claude API** synthesizes all collected data into a structured newsletter (falls back to a template if no API key is set)
-3. **Output** is saved as local Markdown and optionally as a Google Doc (via the Apps Script Web App)
+There are two ways to run the newsletter:
 
-### Google Apps Script Web App
+**Option A: Claude Code + MCP (recommended)**
+1. Run `/pm-newsletter` in Claude Code
+2. Claude collects data via MCP integrations (Slack, Jira) — no API tokens needed
+3. Newsletter is published as a **Slack Canvas** or saved as Markdown
 
-Because eBay's Google Workspace restricts Google Cloud Console access, Google Drive integration uses a **Google Apps Script** deployed as a Web App instead of direct API credentials. The script:
-- Runs inside your eBay Google account with built-in Drive access
-- Exposes GET (fetch Drive activity) and POST (create newsletter Google Doc) endpoints
-- No Cloud Console project or OAuth credentials needed
+**Option B: Standalone Python script**
+1. `generate.py` runs collectors that call Slack/Jira/Google Drive APIs directly
+2. Claude API synthesizes all data into a newsletter (falls back to template if no API key)
+3. Output saved as local Markdown and optionally as a Google Doc
+
+Both approaches produce the same newsletter format. Option A is easier to set up since it uses Claude Code's built-in integrations. Option B is better for automation (cron jobs).
+
+### Data Collection Fallbacks
+
+Each collector has a built-in fallback chain:
+- **Slack**: API token → MCP-collected JSON file
+- **Jira**: API token → MCP-collected JSON file
+- **Google Drive**: Apps Script Web App → skipped gracefully
+- **Outlook**: Microsoft Graph API → skipped gracefully
+
+This means the newsletter works even if you only have partial credentials configured.
 
 ---
 
@@ -55,15 +70,14 @@ Because eBay's Google Workspace restricts Google Cloud Console access, Google Dr
 
 ### Prerequisites
 
-- Python 3.11+
-- An eBay Google Workspace account (for Google Apps Script)
-- Access to Jira (jirap.corp.ebay.com)
-- A Slack workspace with bot token access
+- Python 3.9+
+- Claude Code with Slack MCP connected (for Option A)
 
 ### 1. Clone and install
 
 ```bash
-cd ~/pm-newsletter
+git clone https://github.com/hehamilton-collab/pm-newsletter.git
+cd pm-newsletter
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -73,237 +87,135 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-```
-
-Edit `.env` and fill in credentials as you complete each section below.
-
-### 3. Configure project settings
-
-Copy the example and edit with your details:
-
-```bash
 cp config.yaml.example config.yaml
 ```
 
-Edit `config.yaml` to match your setup:
+Edit `config.yaml` with your details:
 
 ```yaml
 user:
   name: "Your Name"
-  slack_user_id: "U052DK3HMRC"   # Find via Slack profile > ... > Copy member ID
-  email: "you@ebay.com"
+  slack_user_id: "UXXXXXXXXXX"   # Slack profile > ... > Copy member ID
+  email: "you@company.com"
   timezone: "America/Los_Angeles"
 
 jira:
-  project_key: "ATMOS"
-  initiative: "DP Gateway"
+  project_key: "YOUR_PROJECT"
+  initiative: "Your Initiative"
   components:
-    - "Recoplex"
-    - "Caramel"
-    - "Config Hub"
-    - "DP Gateway"
+    - "Component1"
+    - "Component2"
 ```
 
 ---
 
 ## Credential Setup
 
-### Jira API Token
+All credentials are optional — the script gracefully skips any collector that isn't configured.
 
-The Jira collector uses basic auth against `jirap.corp.ebay.com`.
+### Slack
 
-1. Go to your Jira profile: **Profile > Personal Access Tokens** (or navigate to `https://jirap.corp.ebay.com/secure/ViewProfile.jspa` > **Personal Access Tokens**)
-2. If your Jira instance uses Atlassian Cloud, go to https://id.atlassian.com/manage-profile/security/api-tokens instead
-3. Click **Create token**
-4. Name it `pm-newsletter` and copy the token
-5. Add to `.env`:
-   ```
-   JIRA_SERVER=https://jirap.corp.ebay.com
-   JIRA_EMAIL=hehamilton@ebay.com
-   JIRA_API_TOKEN=<your-token>
-   ```
+**Option A (MCP — no token needed):** If using Claude Code with Slack MCP, data is collected automatically and saved to `output/slack_data.json`. The Python script reads from this file.
 
-> **Note:** If your Jira instance uses SSO/OAuth and doesn't support personal access tokens, you may need to use a service account or ask your Jira admin for API access.
-
-### Slack Bot Token
-
-The Slack collector uses the Slack Web API for searching messages and fetching threads.
-
-1. Go to https://api.slack.com/apps
-2. Click **Create New App** > **From scratch**
-3. Name: `PM Newsletter`, Workspace: your eBay workspace
-4. Go to **OAuth & Permissions** in the sidebar
-5. Under **Bot Token Scopes**, add:
-   - `search:read` — search messages
-   - `channels:history` — read public channel messages
-   - `groups:history` — read private channel messages
-   - `im:history` — read DM messages
-   - `mpim:history` — read group DM messages
-   - `users:read` — look up user info
-6. Click **Install to Workspace** and authorize
-7. Copy the **Bot User OAuth Token** (starts with `xoxb-`)
-8. Add to `.env`:
-   ```
-   SLACK_BOT_TOKEN=xoxb-your-token-here
-   ```
-
-> **Note:** The `search:read` scope requires a **user token** (`xoxp-`), not a bot token, on some Slack plans. If search doesn't work with the bot token, go to **OAuth & Permissions** > **User Token Scopes** and add `search:read` there, then use the **User OAuth Token** instead.
-
-### Google Drive (Apps Script Web App)
-
-This is already set up if you completed the original session. If not:
-
-1. Go to [script.google.com](https://script.google.com/) and click **New project**
-2. Name it **"PM Newsletter"**
-3. Delete all code in the editor
-4. Copy the contents of `google-apps-script/Code.gs` and paste it in
-5. Click **Save**
-6. Test it:
-   - Select **`testDriveActivity`** from the function dropdown
-   - Click **Run**
-   - First time: authorize all permissions when prompted
-   - Check Execution log — should show modified files count
-7. Deploy as Web App:
-   - Click **Deploy** > **New deployment**
-   - Type: **Web app**
-   - Execute as: **Me**
-   - Who has access: **Anyone** (within your org) or **Anyone with Google account**
-   - Click **Deploy** and copy the Web App URL
-8. Add to `.env`:
-   ```
-   GOOGLE_APPS_SCRIPT_URL=https://script.google.com/a/macros/ebay.com/s/.../exec
-   ```
-
-**To verify the deployment works:**
-```bash
-curl "YOUR_APPS_SCRIPT_URL?action=health"
-# Should return: {"status":"ok","timestamp":"..."}
+**Option B (API token):** Create a Slack app at https://api.slack.com/apps with these **User Token Scopes**: `search:read`, `channels:history`, `groups:history`, `im:history`, `mpim:history`, `users:read`. Add the User OAuth Token to `.env`:
+```
+SLACK_BOT_TOKEN=xoxp-your-token-here
 ```
 
-### Outlook Calendar (Microsoft Graph / Azure AD)
+> **Note:** Some enterprise Slack plans restrict app creation. Use the MCP approach instead.
 
-This integration pulls your past and upcoming calendar events via the Microsoft Graph API.
+### Jira
 
-1. Go to [Azure Portal > App Registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
-2. Sign in with your eBay Microsoft account
-3. Click **New registration**:
-   - Name: `PM Newsletter`
-   - Supported account types: **"Accounts in this organizational directory only"** (eBay tenant)
-   - Redirect URI: leave blank for now
-   - Click **Register**
-4. On the app overview page, copy:
-   - **Application (client) ID**
-   - **Directory (tenant) ID**
-5. Go to **API permissions** > **Add a permission**:
-   - Select **Microsoft Graph**
-   - Select **Delegated permissions**
-   - Search and add: `Calendars.Read`
-   - Click **Add permissions**
-6. Go to **Authentication** > **Add a platform**:
-   - Select **Mobile and desktop applications**
-   - Check the `https://login.microsoftonline.com/common/oauth2/nativeclient` redirect URI
-   - Click **Configure**
-7. Add to `.env`:
+**Option A (MCP — no token needed):** If using Claude Code with Jira MCP, data is collected and saved to `output/jira_data.json`.
+
+**Option B (API token):** Generate a personal access token from your Jira profile and add to `.env`:
+```
+JIRA_SERVER=https://your-jira-instance.com
+JIRA_EMAIL=you@company.com
+JIRA_API_TOKEN=your-token
+```
+
+> **Note:** Some Jira instances require OAuth instead of personal access tokens. Use the MCP approach if you get a 403 error.
+
+### Google Drive (Optional)
+
+Uses a Google Apps Script deployed as a Web App — no Google Cloud Console project needed.
+
+1. Go to [script.google.com](https://script.google.com/) > **New project**
+2. Paste contents of `google-apps-script/Code.gs`
+3. Deploy as **Web app** (Execute as: Me, Access: Anyone in your org)
+4. Add the URL to `.env`:
    ```
-   MS_CLIENT_ID=your-application-client-id
-   MS_TENANT_ID=your-directory-tenant-id
-   MS_TOKEN_CACHE=~/.config/pm-newsletter/ms_token_cache.json
+   GOOGLE_APPS_SCRIPT_URL=https://script.google.com/.../exec
    ```
-8. On first run, the script will print a device code URL and code. Open the URL in your browser, enter the code, and sign in with your eBay Microsoft account. After that, the token is cached.
 
-> **Note:** If your organization requires admin consent for Graph API permissions, you'll need to ask your Azure AD admin to grant consent for the `Calendars.Read` permission on your app registration.
+### Outlook Calendar (Optional)
+
+Uses Microsoft Graph API. Requires an Azure AD app registration with `Calendars.Read` permission. See `collectors/outlook_collector.py` for details.
+
+> **Note:** Some organizations restrict Azure AD app registration. This collector can be skipped.
 
 ### Anthropic API Key (Optional)
 
-The Claude API is used to synthesize all collected data into a well-written newsletter. Without it, a basic template-based formatter is used instead.
+Powers AI-synthesized newsletter summaries. Without it, a template formatter is used.
 
-1. Go to https://console.anthropic.com/settings/keys
-2. Click **Create Key**
-3. Name it `pm-newsletter` and copy the key
-4. Add to `.env`:
-   ```
-   ANTHROPIC_API_KEY=sk-ant-...
-   ```
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Get a key at https://console.anthropic.com/settings/keys (requires API credits, separate from Claude Pro/Max subscription).
 
 ---
 
 ## Usage
 
-### Run manually
-
-```bash
-source venv/bin/activate
-python generate.py
-```
-
-### Skip specific collectors
-
-```bash
-python generate.py --skip-gdrive      # Skip Google Drive (if not configured)
-python generate.py --skip-outlook      # Skip Outlook (if not configured)
-python generate.py --markdown-only     # Only save as markdown, no Google Doc
-```
-
-### Run via shell script
-
-```bash
-./run.sh
-```
-
-### Output
-
-- **Markdown:** `output/newsletter-YYYY-MM-DD.md`
-- **Google Doc:** Created in a "PM Newsletters" folder in your Google Drive (if Apps Script is configured)
-
-### Using the Claude Code slash command
-
-If you're in Claude Code, you can generate the newsletter using the MCP-connected approach (Slack + Jira MCP tools directly, no API tokens needed):
+### Option A: Claude Code (recommended)
 
 ```
 /pm-newsletter
 ```
 
-This uses Claude Code's built-in Slack and Jira integrations and doesn't require the Python API tokens.
+This collects data via MCP, synthesizes the newsletter, and can publish it as a Slack Canvas.
+
+### Option B: Python script
+
+```bash
+source venv/bin/activate
+python generate.py --skip-outlook --skip-gdrive    # Skip unconfigured collectors
+python generate.py --markdown-only                  # Markdown only, no Google Doc
+```
+
+### Output formats
+
+- **Slack Canvas** — Best for sharing in your workspace (created via MCP)
+- **Google Doc** — Created in a "PM Newsletters" Drive folder (via Apps Script)
+- **Markdown** — Saved to `output/newsletter-YYYY-MM-DD.md`
 
 ---
 
-## Scheduling (Cron)
+## Scheduling
 
-To run every Friday at 12:53 PM PT (before the 1pm deadline):
+To automate weekly generation via cron:
 
 ```bash
-# Edit your crontab
 crontab -e
 
-# Add this line (adjust path as needed):
-53 12 * * 5 /Users/hehamilton/pm-newsletter/run.sh >> /Users/hehamilton/pm-newsletter/output/cron.log 2>&1
-```
-
-Or use `launchd` on macOS for more reliable scheduling:
-
-```bash
-# Create ~/Library/LaunchAgents/com.pm-newsletter.plist
-# See Apple docs for launchd plist format
+# Run every Friday at 12:53 PM (adjust timezone and path):
+53 12 * * 5 /path/to/pm-newsletter/run.sh >> /path/to/pm-newsletter/output/cron.log 2>&1
 ```
 
 ---
 
 ## Troubleshooting
 
-### Slack: "missing_scope" error
-Your token may need user-level scopes (especially `search:read`). Try using a **User OAuth Token** (`xoxp-`) instead of the Bot Token.
-
-### Jira: "401 Unauthorized"
-Your API token may have expired or your Jira instance may not support personal access tokens. Check with your Jira admin.
-
-### Google Apps Script: "TypeError" or date format errors
-Make sure you're using the latest version of `Code.gs` from this repo. The script uses `DriveApp.searchFiles()` (not the advanced Drive API) to avoid date format issues.
-
-### Outlook: "AADSTS65001" (consent required)
-Your Azure AD admin needs to grant consent for the `Calendars.Read` permission. Ask your admin or try the **Grant admin consent** button in the Azure Portal.
-
-### Claude API: falls back to template
-If `ANTHROPIC_API_KEY` is not set, the script uses a basic template formatter instead of Claude-powered synthesis. The template includes the same data but without AI-written summaries.
+| Issue | Solution |
+|-------|----------|
+| Slack `missing_scope` | Use a User OAuth Token (`xoxp-`) instead of Bot Token, or use MCP |
+| Jira `403 Forbidden` | Your instance requires OAuth — use MCP fallback instead |
+| Jira `401 Unauthorized` | Token expired — regenerate from Jira profile |
+| Apps Script date errors | Update to latest `Code.gs` — uses `DriveApp.searchFiles()` not advanced Drive API |
+| Claude API billing error | API credits required (separate from Pro/Max subscription) — or skip for template output |
+| Enterprise restrictions | Use MCP fallback for Slack/Jira; use Apps Script for Google Drive |
 
 ---
 
@@ -313,16 +225,16 @@ If `ANTHROPIC_API_KEY` is not set, the script uses a basic template formatter in
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `SLACK_BOT_TOKEN` | For Slack | Slack bot or user OAuth token |
-| `JIRA_SERVER` | For Jira | Jira server URL |
-| `JIRA_EMAIL` | For Jira | Your Jira email |
-| `JIRA_API_TOKEN` | For Jira | Jira personal access token |
-| `GOOGLE_APPS_SCRIPT_URL` | For Google Drive | Deployed Apps Script Web App URL |
-| `MS_CLIENT_ID` | For Outlook | Azure AD application client ID |
-| `MS_TENANT_ID` | For Outlook | Azure AD directory tenant ID |
-| `MS_TOKEN_CACHE` | For Outlook | Path to Microsoft token cache file |
+| `SLACK_BOT_TOKEN` | Optional | Slack user OAuth token (MCP fallback available) |
+| `JIRA_SERVER` | Optional | Jira server URL (MCP fallback available) |
+| `JIRA_EMAIL` | Optional | Your Jira email |
+| `JIRA_API_TOKEN` | Optional | Jira personal access token |
+| `GOOGLE_APPS_SCRIPT_URL` | Optional | Deployed Apps Script Web App URL |
+| `MS_CLIENT_ID` | Optional | Azure AD application client ID |
+| `MS_TENANT_ID` | Optional | Azure AD directory tenant ID |
+| `MS_TOKEN_CACHE` | Optional | Path to Microsoft token cache file |
 | `ANTHROPIC_API_KEY` | Optional | Claude API key for AI synthesis |
 
 ### config.yaml
 
-See [config.yaml](config.yaml) for all available settings including Jira project/components, Slack decision keywords, and lookback period.
+See `config.yaml.example` for all available settings including Jira project/components, Slack decision keywords, and lookback period.
