@@ -1,6 +1,6 @@
 # PM Weekly Newsletter Generator
 
-Automated weekly newsletter for PM3 Technical — eBay ATMOS / DP Gateway. Pulls data from Slack, Jira, Google Drive, and Outlook Calendar, then uses Claude to synthesize it into a formatted newsletter with executive summary, sprint status, blockers, key decisions, and action items.
+Automated weekly newsletter for PMs. Pulls data from Slack, Jira, and Google Drive then uses Claude to synthesize it into a formatted newsletter with executive summary, sprint status, blockers, key decisions, and action items.
 
 ## Newsletter Sections
 
